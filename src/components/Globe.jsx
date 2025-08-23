@@ -7,6 +7,8 @@ const AttackGlobe = () => {
   const globeEl = useRef(null);
   const globeInstance = useRef(null);
   const spawnArc = useRef(null);
+  const [loading, setLoading] = useState(true);
+  const canvaRef = useRef(null);
 
   const [countries, setCountries] = useState({ features: [] });
 
@@ -34,7 +36,7 @@ const AttackGlobe = () => {
 
       // Arc, Use pre-arc
       .arcColor((a) => [a.colorHead || "#ff4d6d", a.colorTail || "#ffe3ea"])
-      .arcStroke(0.5)
+      .arcStroke((a) => a.strokeWidth ?? 0.5)
       .arcAltitude((a) => a.altitude ?? 0.35)
       .arcAltitudeAutoScale(0.6)
       .arcDashLength((a) => a.dashLength ?? 0.2)
@@ -78,6 +80,7 @@ const AttackGlobe = () => {
         altitude = 0.5,
         animateTime = 2000, // travel speed
         lifetimeMs = 3000, // keep slightly longer than animateTime
+        strokeWidth,
       },
     ) {
       if (!globe) return;
@@ -96,6 +99,7 @@ const AttackGlobe = () => {
         dashLength: 0.5,
         dashGap: 1.1,
         animateTime,
+        strokeWidth,
       };
 
       // Append this arc
@@ -164,6 +168,7 @@ const AttackGlobe = () => {
 
     // Orbit
     const rotationSpeed = 0.2;
+    let firstFrameDone = false;
     let rafId;
     const loop = () => {
       const { x, z } = camera.position;
@@ -172,18 +177,38 @@ const AttackGlobe = () => {
       camera.position.z = x * Math.sin(angle) + z * Math.cos(angle);
       camera.lookAt(0, 0, 0);
       rafId = requestAnimationFrame(loop);
+      if (!firstFrameDone) {
+        firstFrameDone = true;
+        setTimeout(() => {
+          setLoading(false);
+        }, 0);
+      }
     };
     loop();
 
     // Use world here coz globeInstance is not set yet
-    spawnArc.current = () => {
+    spawnArc.current = (data) => {
+      console.log(data);
+      const severityColorMap = {
+        low: "#4caf50",
+        med: "#ff9800",
+        high: "#f44336",
+      };
+      const color = severityColorMap[data.severity?.toLowerCase()] || "#9e9e9e";
+
+      const intensity = data.intensity / 100;
+      const tailColor = "#1BFFFF"; //`rgba(255, 0, 0, ${intensity}`;
+
       createAndDestroyArc(world, {
-        startLat: 37.7749,
-        startLng: -122.4194, // SF
-        endLat: 40.7128,
-        endLng: -74.006, // NYC
+        startLat: data.startLat,
+        startLng: data.startLng,
+        endLat: data.endLat,
+        endLng: data.endLng,
         animateTime: 5000,
         lifetimeMs: 7000,
+        colorHead: color,
+        colorTail: color,
+        strokeWidth: intensity,
       });
     };
 
@@ -198,10 +223,22 @@ const AttackGlobe = () => {
     };
   }, [countries]);
 
-  // Get data and spawn arc
+  // Get data and spawn arc with loop
   useEffect(() => {
     if (!globeInstance.current) return;
-  });
+    const fetchData = async () => {
+      try {
+        const res = await fetch("http://localhost:3001/api/attacks");
+        const data = await res.json();
+        if (!data?.success || !Array.isArray(data.attacks)) return;
+        console.log(data);
+        data.attacks.forEach((a) => spawnArc.current(a));
+      } catch (err) {
+        console.log("no data", err);
+      }
+    };
+    fetchData();
+  }, [loading]);
 
   return (
     <div className="relative w-full h-screen">
