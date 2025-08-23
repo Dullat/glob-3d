@@ -1,48 +1,49 @@
+// Globe Main player
 import React, { useEffect, useRef, useState } from "react";
 import Globe from "globe.gl";
 import * as THREE from "three";
 
 const AttackGlobe = () => {
-  const globeRef = useRef();
+  const globeEl = useRef(null);
+  const globeInstance = useRef(null);
+  const spawnArc = useRef(null);
+
   const [countries, setCountries] = useState({ features: [] });
 
   useEffect(() => {
-    // Natural earth data
     fetch(
       "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson",
     )
       .then((res) => res.json())
-      .then((data) => {
-        setCountries(data);
-      });
+      .then((data) => setCountries(data))
+      .catch((e) => console.error("Failed to load countries:", e));
   }, []);
 
   useEffect(() => {
-    if (!countries.features.length) return;
-    const world = Globe()(globeRef.current)
-      //.globeImageUrl("//unpkg.com/three-globe/example/img/earth-night.jpg")
+    if (!countries.features.length || globeInstance.current) return;
 
-      // polygone
+    const world = Globe()(globeEl.current)
+      // Land polygons
       .hexPolygonsData(countries.features)
-      .hexPolygonResolution(3) // Hexagon size (0-15, 3 is good balance)
-      .hexPolygonMargin(0.3) // Gap between hexagons (0-1)
-      .hexPolygonUseDots(false) // Set to true for circular dots instead of hexagons
-      .hexPolygonColor(() => `hsl(${Math.random() * 60 + 180}, 80%, 60%)`) // Random blue/cyan colors
-      .hexPolygonAltitude(0.005) // Slight elevation
-      .hexPolygonCurvatureResolution(5) // Surface curvature detail
+      .hexPolygonResolution(3)
+      .hexPolygonMargin(0.3)
+      .hexPolygonUseDots(false)
+      .hexPolygonColor(() => `hsl(${Math.random() * 60 + 180}, 80%, 60%)`)
+      .hexPolygonAltitude(0.005)
+      .hexPolygonCurvatureResolution(5)
 
-      // Arc styling for attacks
-      .arcColor(
-        () => ["#ff4444", "#ff8800", "#ffaa00"][Math.floor(Math.random() * 3)],
-      )
-      .arcDashLength(0.4)
-      .arcDashGap(0.2)
-      .arcDashInitialGap(() => Math.random())
-      .arcDashAnimateTime(2000)
-      .arcsTransitionDuration(0)
+      // Arc, Use pre-arc
+      .arcColor((a) => [a.colorHead || "#ff4d6d", a.colorTail || "#ffe3ea"])
       .arcStroke(0.5)
+      .arcAltitude((a) => a.altitude ?? 0.35)
+      .arcAltitudeAutoScale(0.6)
+      .arcDashLength((a) => a.dashLength ?? 0.2)
+      .arcDashGap((a) => a.dashGap ?? 0.8)
+      .arcDashInitialGap((a) => a.initialGap ?? 0)
+      .arcDashAnimateTime((a) => a.animateTime ?? 1000)
+      .arcsTransitionDuration(200)
 
-      // Add country dots
+      // Points
       .pointsData(generateCountryDots())
       .pointColor(() => "#4FC3F7")
       .pointAltitude(0.01)
@@ -64,47 +65,82 @@ const AttackGlobe = () => {
         }),
       );
 
-    // Enhanced lighting setup
+    // Spawns one traveling arc and remove it after lifetimeMs, This is the main shit
+    function createAndDestroyArc(
+      globe,
+      {
+        startLat,
+        startLng,
+        endLat,
+        endLng,
+        colorHead = "#ff4d6d",
+        colorTail = "#ffe3ea",
+        altitude = 0.5,
+        animateTime = 2000, // travel speed
+        lifetimeMs = 3000, // keep slightly longer than animateTime
+      },
+    ) {
+      if (!globe) return;
+
+      const id = `arc_${Math.random().toString(36).slice(2)}`;
+      const arc = {
+        id,
+        startLat,
+        startLng,
+        endLat,
+        endLng,
+        colorHead,
+        colorTail,
+        altitude,
+        initialGap: 0.9,
+        dashLength: 0.5,
+        dashGap: 1.1,
+        animateTime,
+      };
+
+      // Append this arc
+      const current = globe.arcsData();
+      globe.arcsData([...current, arc]);
+
+      // Remove this arc after lifetimeMs
+      const t = setTimeout(() => {
+        try {
+          const after = globe.arcsData().filter((a) => a.id !== id);
+          globe.arcsData(after);
+        } finally {
+          clearTimeout(t);
+        }
+      }, lifetimeMs);
+    }
+
+    // Lights
     const scene = world.scene();
+    scene.children = scene.children.filter((c) => !(c instanceof THREE.Light));
+    scene.add(new THREE.AmbientLight(0x404040, 0.4));
 
-    // Clear existing lights
-    scene.children = scene.children.filter(
-      (child) => !(child instanceof THREE.Light),
-    );
+    const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+    dir.position.set(-800, 2000, 400);
+    dir.castShadow = true;
+    scene.add(dir);
 
-    // Ambient light for base illumination
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
-    scene.add(ambientLight);
+    const fill = new THREE.DirectionalLight(0x3a228a, 0.9);
+    fill.position.set(800, -1000, -400);
+    scene.add(fill);
 
-    // Main directional light (sun-like)
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    directionalLight.position.set(-800, 2000, 400);
-    directionalLight.castShadow = true;
-    scene.add(directionalLight);
+    const rim = new THREE.PointLight(0x4fc3f7, 0.8, 1000);
+    rim.position.set(-400, 800, 600);
+    scene.add(rim);
 
-    // Secondary directional light for fill
-    const fillLight = new THREE.DirectionalLight(0x3a228a, 0.9);
-    fillLight.position.set(800, -1000, -400);
-    scene.add(fillLight);
+    scene.add(new THREE.HemisphereLight(0x87ceeb, 0x000000, 0.3));
 
-    // Point light for rim lighting effect
-    const rimLight = new THREE.PointLight(0x4fc3f7, 0.8, 1000);
-    rimLight.position.set(-400, 800, 600);
-    scene.add(rimLight);
-
-    // Hemisphere light for subtle environment
-    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x000000, 0.3);
-    scene.add(hemiLight);
-
-    // Camera setup
+    // Camera/background
     const camera = world.camera();
     camera.position.set(0, 0, 400);
     camera.lookAt(0, 0, 0);
-
-    // Enhanced background with gradient effect
     scene.background = new THREE.Color(0x040d21);
+    scene.fog = new THREE.FogExp2(0x2a1a4e, 0.0005);
 
-    // Add starfield
+    // Stars
     const starsGeometry = new THREE.BufferGeometry();
     const starsMaterial = new THREE.PointsMaterial({
       color: 0xffffff,
@@ -112,7 +148,6 @@ const AttackGlobe = () => {
       transparent: true,
       opacity: 0.8,
     });
-
     const starsVertices = [];
     for (let i = 0; i < 10000; i++) {
       starsVertices.push(
@@ -125,125 +160,86 @@ const AttackGlobe = () => {
       "position",
       new THREE.Float32BufferAttribute(starsVertices, 3),
     );
+    scene.add(new THREE.Points(starsGeometry, starsMaterial));
 
-    const stars = new THREE.Points(starsGeometry, starsMaterial);
-    scene.add(stars);
-
-    // Enhanced attack simulation
-    const attacks = [];
-    const attackSources = [
-      { lat: 39.9042, lng: 116.4074, name: "Beijing" },
-      { lat: 55.7558, lng: 37.6173, name: "Moscow" },
-      { lat: 40.7128, lng: -74.006, name: "New York" },
-      { lat: 51.5074, lng: -0.1278, name: "London" },
-      { lat: 35.6762, lng: 139.6503, name: "Tokyo" },
-      { lat: -33.8688, lng: 151.2093, name: "Sydney" },
-      { lat: 37.7749, lng: -122.4194, name: "San Francisco" },
-      { lat: 52.52, lng: 13.405, name: "Berlin" },
-    ];
-
-    const targets = [
-      { lat: 37.7749, lng: -122.4194, name: "San Francisco" },
-      { lat: 40.7128, lng: -74.006, name: "New York" },
-      { lat: 51.5074, lng: -0.1278, name: "London" },
-      { lat: 35.6762, lng: 139.6503, name: "Tokyo" },
-    ];
-
-    const attackInterval = setInterval(() => {
-      const source =
-        attackSources[Math.floor(Math.random() * attackSources.length)];
-      const target = targets[Math.floor(Math.random() * targets.length)];
-
-      if (source !== target) {
-        const newArc = {
-          startLat: source.lat,
-          startLng: source.lng,
-          endLat: target.lat,
-          endLng: target.lng,
-          strokeWidth: Math.random() * 2 + 0.5,
-        };
-
-        attacks.push(newArc);
-        if (attacks.length > 25) attacks.shift();
-        world.arcsData([...attacks]);
-      }
-    }, 800);
-
-    // Auto rotation
+    // Orbit
     const rotationSpeed = 0.2;
-    const rotateGlobe = () => {
-      const camera = world.camera();
-      const { x, y, z } = camera.position;
-
-      camera.position.x =
-        x * Math.cos(rotationSpeed * 0.01) - z * Math.sin(rotationSpeed * 0.01);
-      camera.position.z =
-        x * Math.sin(rotationSpeed * 0.01) + z * Math.cos(rotationSpeed * 0.01);
+    let rafId;
+    const loop = () => {
+      const { x, z } = camera.position;
+      const angle = rotationSpeed * 0.01;
+      camera.position.x = x * Math.cos(angle) - z * Math.sin(angle);
+      camera.position.z = x * Math.sin(angle) + z * Math.cos(angle);
       camera.lookAt(0, 0, 0);
-
-      requestAnimationFrame(rotateGlobe);
+      rafId = requestAnimationFrame(loop);
     };
-    rotateGlobe();
+    loop();
 
-    // Cleanup
+    // Use world here coz globeInstance is not set yet
+    spawnArc.current = () => {
+      createAndDestroyArc(world, {
+        startLat: 37.7749,
+        startLng: -122.4194, // SF
+        endLat: 40.7128,
+        endLng: -74.006, // NYC
+        animateTime: 5000,
+        lifetimeMs: 7000,
+      });
+    };
+
+    globeInstance.current = world; // Will be used outside for later work
+
     return () => {
-      clearInterval(attackInterval);
+      cancelAnimationFrame(rafId);
+      try {
+        world._destructor && world._destructor();
+      } catch {}
+      globeInstance.current = null;
     };
   }, [countries]);
 
-  // Generate country dots data
-  const generateCountryDots = () => {
-    const dots = [];
+  // Get data and spawn arc
+  useEffect(() => {
+    if (!globeInstance.current) return;
+  });
 
-    // Major cities and regions for dots
-    const locations = [
-      // North America
-      { lat: 40.7128, lng: -74.006 },
-      { lat: 34.0522, lng: -118.2437 },
-      { lat: 41.8781, lng: -87.6298 },
-      { lat: 29.7604, lng: -95.3698 },
-      { lat: 33.4484, lng: -112.074 },
-      { lat: 39.7392, lng: -104.9903 },
+  return (
+    <div className="relative w-full h-screen">
+      <button
+        onClick={() => spawnArc.current()}
+        className="absolute left-5 top-5  text-white z-50 bg-amber-500"
+      >
+        hhhh
+      </button>
+      <div ref={globeEl} className="w-full h-full" />
+    </div>
+  );
+};
 
-      // Europe
-      { lat: 51.5074, lng: -0.1278 },
-      { lat: 48.8566, lng: 2.3522 },
-      { lat: 52.52, lng: 13.405 },
-      { lat: 41.9028, lng: 12.4964 },
-      { lat: 40.4168, lng: -3.7038 },
-      { lat: 59.9311, lng: 30.3609 },
+const generateCountryDots = () => {
+  const dots = [];
+  const locations = [
+    { lat: 40.7128, lng: -74.006 },
+    { lat: 34.0522, lng: -118.2437 },
+    { lat: 41.8781, lng: -87.6298 },
+    { lat: 51.5074, lng: -0.1278 },
+    { lat: 48.8566, lng: 2.3522 },
+    { lat: 35.6762, lng: 139.6503 },
+    { lat: -33.8688, lng: 151.2093 },
+    { lat: 55.7558, lng: 37.6176 },
+  ];
 
-      // Asia
-      { lat: 35.6762, lng: 139.6503 },
-      { lat: 39.9042, lng: 116.4074 },
-      { lat: 31.2304, lng: 121.4737 },
-      { lat: 28.6139, lng: 77.209 },
-      { lat: 1.3521, lng: 103.8198 },
-      { lat: 37.5665, lng: 126.978 },
-
-      // Others
-      { lat: -33.8688, lng: 151.2093 },
-      { lat: -23.5505, lng: -46.6333 },
-      { lat: 30.0444, lng: 31.2357 },
-      { lat: -26.2041, lng: 28.0473 },
-    ];
-
-    // Add some random scatter around each location
-    locations.forEach((location) => {
-      for (let i = 0; i < 3; i++) {
-        dots.push({
-          lat: location.lat + (Math.random() - 0.5) * 10,
-          lng: location.lng + (Math.random() - 0.5) * 10,
-          size: Math.random() * 0.3 + 0.1,
-          color: "#4FC3F7",
-        });
-      }
-    });
-
-    return dots;
-  };
-
-  return <div ref={globeRef} className="w-full h-screen" />;
+  locations.forEach((loc) => {
+    for (let i = 0; i < 3; i++) {
+      dots.push({
+        lat: loc.lat + (Math.random() - 0.5) * 10,
+        lng: loc.lng + (Math.random() - 0.5) * 10,
+        size: Math.random() * 0.3 + 0.1,
+        color: "#4FC3F7",
+      });
+    }
+  });
+  return dots;
 };
 
 export default AttackGlobe;
