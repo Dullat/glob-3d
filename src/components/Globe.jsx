@@ -22,15 +22,132 @@ const AttackGlobe = () => {
   // Satellite
   const [isSatellite, setIsSatellite] = useState(false);
 
+  // For satellite random messages
+  const [satelliteMessage, setSatelliteMessage] = useState("");
+  const [showSatelliteMessage, setShowSatelliteMessage] = useState(false);
+  const [satelliteMessagePosition, setSatelliteMessagePosition] = useState({
+    x: 0,
+    y: 0,
+  });
+  const satelliteMessageTimeoutRef = useRef(null);
+  const satelliteMessageIntervalRef = useRef(null);
+
+  // Random messages array
+  const satelliteMessages = [
+    "hmm..., earth is fucked",
+    "wohhhaa.. its all attacks?",
+    "scanning for threats...",
+    "humans never learn",
+    "chaos detected below",
+    "another day, another breach",
+    "sometimes i feel corny...",
+    "watching the world burn",
+    "cyber warfare intensifying",
+    "satellites see everything, even you my frnd",
+    "digital apocalypse mode: ON",
+    "earth.exe has stopped working",
+    "firewall? more like fire-fail",
+    "collecting human stupidity data",
+    "malware rain detected",
+  ];
+
   // ================== Satellite Static Data ================== //
   const sat = {
     id: "sat-1",
-    // name: "NEON-SAT-1",
+    // name: "NEON-SAT-1", // This will show the title , so set manualy in HTML
     lat: 60, // Russia
     lng: 90,
     altitude: 0.18,
   };
   // ======================================================================== //
+
+  // ========================= show random satellite message =================//
+  const showRandomSatelliteMessage = () => {
+    if (!globeInstance.current) return;
+
+    const randomMessage =
+      satelliteMessages[Math.floor(Math.random() * satelliteMessages.length)];
+    setSatelliteMessage(randomMessage);
+
+    // Get satellite 3D position and convert to screen coordinates
+    const satPosition = globeInstance.current.getCoords(
+      sat.lat,
+      sat.lng,
+      sat.altitude,
+    );
+    const camera = globeInstance.current.camera();
+    const canvas = globeEl.current;
+
+    if (satPosition && camera && canvas) {
+      // Create a vector from the satellite position
+      const vector = new THREE.Vector3(
+        satPosition.x,
+        satPosition.y,
+        satPosition.z,
+      );
+
+      // Add offset above the satellite,
+      vector.y += 25; // Move message above satellite
+
+      // Project to screen coordinates
+      vector.project(camera);
+
+      // Convert into screen pixels
+      const rect = canvas.getBoundingClientRect();
+      const x = (vector.x * 0.5 + 0.5) * rect.width;
+      const y = (-vector.y * 0.5 + 0.5) * rect.height;
+
+      setSatelliteMessagePosition({ x, y });
+      setShowSatelliteMessage(true);
+    }
+
+    // Hide message auto
+    const hideDelay = 5000 + Math.random() * 2000;
+    satelliteMessageTimeoutRef.current = setTimeout(() => {
+      setShowSatelliteMessage(false);
+    }, hideDelay);
+  };
+
+  // Start random interval when satellite is not hovered
+  useEffect(() => {
+    if (!isSatellite && !loading) {
+      // Show message eveyr 8th sec
+      const interval = 8000 + Math.random() * 7000; // Initially More time
+      satelliteMessageIntervalRef.current = setTimeout(() => {
+        showRandomSatelliteMessage();
+        satelliteMessageIntervalRef.current = setInterval(
+          () => {
+            if (!isSatellite) {
+              showRandomSatelliteMessage();
+            }
+          },
+          8000 + Math.random() * 7000,
+        );
+      }, interval);
+    } else {
+      // Clear interval when satellite hovered
+      if (satelliteMessageIntervalRef.current) {
+        clearInterval(satelliteMessageIntervalRef.current);
+        clearTimeout(satelliteMessageIntervalRef.current);
+      }
+      if (satelliteMessageTimeoutRef.current) {
+        clearTimeout(satelliteMessageTimeoutRef.current);
+      }
+      setShowSatelliteMessage(false);
+    }
+
+    return () => {
+      if (satelliteMessageIntervalRef.current) {
+        clearInterval(satelliteMessageIntervalRef.current);
+        clearTimeout(satelliteMessageIntervalRef.current);
+      }
+      if (satelliteMessageTimeoutRef.current) {
+        clearTimeout(satelliteMessageTimeoutRef.current);
+      }
+    };
+  }, [isSatellite, loading]);
+
+  //  ========================== End of Satellite msgs ==========================
 
   useEffect(() => {
     fetch(
@@ -414,7 +531,9 @@ const AttackGlobe = () => {
     if (!globeInstance.current) return;
     const fetchData = async () => {
       try {
-        const res = await fetch("http://localhost:3001/api/attacks");
+        const res = await fetch(
+          "https://ddos-glob-server.onrender.com/api/attacks/",
+        );
         const data = await res.json();
         if (!data?.success || !Array.isArray(data.attacks)) return;
         data.attacks.forEach((a) => spawnArc.current(a));
@@ -445,6 +564,9 @@ const AttackGlobe = () => {
             backgroundColor: `rgba(0, 0, 0, 0.5)`,
             border: `1px solid blue`,
             fontSize: `10px`,
+            color: "yellow",
+            margin: "0",
+            lineHeight: "1.2",
             boxShadow: `
               0 0 10px ${hoveredArc.head},
               0 0 10px ${hoveredArc.head},
@@ -478,13 +600,82 @@ const AttackGlobe = () => {
             transform: `translateX(20%)`,
           }}
         >
-          <p>SE-SAT-1</p>
+          <p>🛰️ NEON-SAT-1</p>
           <p>Lat: {hoveredArc.lat} </p>
           <p>Lng: {hoveredArc.lng} </p>
           <button style={{ color: `#ff2dc6` }}> Click me For More</button>
         </div>
       )}
+
+      {showSatelliteMessage && (
+        <div
+          className="absolute z-20 flex flex-col p-2 rounded font-mono text-green-400 min-w-max max-w-xs"
+          style={{
+            left: `${satelliteMessagePosition.x}px`,
+            top: `${satelliteMessagePosition.y}px`,
+            backgroundColor: `rgba(0, 20, 0, 0.9)`,
+            border: `1px solid #00ff41`,
+            fontSize: `11px`,
+            boxShadow: `
+              0 0 15px #00ff41,
+              0 0 20px rgba(0, 255, 65, 0.4),
+              inset 0 0 10px rgba(0, 255, 65, 0.1)
+            `,
+            transform: "translate(-50%, -100%)",
+            animation: "satelliteBounce 0.6s ease-out",
+            pointerEvents: "none", // So that it does not fuck the arcs
+          }}
+        >
+          <p
+            style={{ color: "#00ff41", fontSize: "10px", margin: "0 0 2px 0" }}
+          >
+            🛰️ NEON-SAT-1:
+          </p>
+          <p
+            style={{
+              fontStyle: "italic",
+              color: "#66ff66",
+              margin: "0",
+              lineHeight: "1.2",
+            }}
+          >
+            "{satelliteMessage}"
+          </p>
+
+          {/* bbl pointer  */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: "-6px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: "0",
+              height: "0",
+              borderLeft: "6px solid transparent",
+              borderRight: "6px solid transparent",
+              borderTop: "6px solid #00ff41",
+            }}
+          />
+        </div>
+      )}
+
       <div ref={globeEl} className="w-full h-full" />
+
+      <style jsx>{`
+        @keyframes satelliteBounce {
+          0% {
+            opacity: 0;
+            transform: translate(-50%, -100%) scale(0.8) translateY(10px);
+          }
+          50% {
+            transform: translate(-50%, -100%) scale(1.05) translateY(-5px);
+          }
+          100% {
+            opacity: 1;
+            transform: translate(-50%, -100%) scale(1) translateY(0px);
+          }
+        }
+      `}</style>
     </div>
   );
 };
