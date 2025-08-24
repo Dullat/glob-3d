@@ -1,7 +1,8 @@
-// Globe Main player
+// Just fuking with my own brain
 import React, { useEffect, useRef, useState } from "react";
 import Globe from "globe.gl";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { colorFromSeverityIntensity } from "./setColors";
 import clamp01 from "./clamp";
 
@@ -17,6 +18,19 @@ const AttackGlobe = () => {
   const toolTipTimeoutRef = useRef(null);
 
   const [countries, setCountries] = useState({ features: [] });
+
+  // Satellite
+  const [isSatellite, setIsSatellite] = useState(false);
+
+  // ================== Satellite Static Data ================== //
+  const sat = {
+    id: "sat-1",
+    // name: "NEON-SAT-1",
+    lat: 60, // Russia
+    lng: 90,
+    altitude: 0.18,
+  };
+  // ======================================================================== //
 
   useEffect(() => {
     fetch(
@@ -40,7 +54,7 @@ const AttackGlobe = () => {
       .hexPolygonAltitude(0.005)
       .hexPolygonCurvatureResolution(5)
 
-      // Arc, Use pre-arc
+      // Arcs
       .arcColor((a) => [a.colorHead || "#ff4d6d", a.colorTail || "#ffe3ea"])
       .arcStroke((a) => a.strokeWidth ?? 0.5)
       .arcAltitude((a) => a.altitude ?? 0.35)
@@ -50,11 +64,13 @@ const AttackGlobe = () => {
       .arcDashInitialGap((a) => a.initialGap ?? 0)
       .arcDashAnimateTime((a) => a.animateTime ?? 1000)
       .arcsTransitionDuration(200)
-      .onArcHover((arc, prevArc) => {
+      .onArcHover((arc) => {
         if (toolTipTimeoutRef.current) clearTimeout(toolTipTimeoutRef.current);
         if (arc) {
           setHoveredArc(arc.data);
+          setIsSatellite(false);
           setShowToolTip(true);
+          console.log(arc.data);
         } else {
           toolTipTimeoutRef.current = setTimeout(() => {
             setShowToolTip(false);
@@ -84,7 +100,115 @@ const AttackGlobe = () => {
         }),
       );
 
-    // Spawns one traveling arc and remove it after lifetimeMs, This is the main shit
+    // ================== Satellite model with GLTFLoader (no R3Fiber) ================== //
+    const gltfCache = { sat: null };
+    const loader = new GLTFLoader();
+
+    function addHalo(group, radius = 3.2) {
+      const haloGeom = new THREE.SphereGeometry(radius, 200, 200);
+      const haloMat = new THREE.MeshBasicMaterial({
+        color: "#00e5ff",
+        transparent: true,
+        opacity: 0.7,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const halo = new THREE.Mesh(haloGeom, haloMat);
+      group.add(halo);
+    }
+
+    function makeSatelliteObject() {
+      const group = new THREE.Group();
+      group.userData.kind = "satellite";
+
+      if (gltfCache.sat) {
+        const inst = gltfCache.sat.clone(true);
+        inst.scale.set(3.0, 3.0, 3.0); // adjust to taste
+        // For now its not working , just keep it static
+        // inst.rotation.set(
+        //   THREE.MathUtils.degToRad(10),
+        //   THREE.MathUtils.degToRad(45),
+        //   THREE.MathUtils.degToRad(0)
+        // );
+        group.add(inst);
+        addHalo(group);
+        return group;
+      }
+
+      // Placeholder while GLB loading
+      const placeholder = new THREE.Mesh(
+        new THREE.SphereGeometry(1.2, 16, 16),
+        new THREE.MeshStandardMaterial({
+          color: "#00e5ff",
+          emissive: "#0077ff",
+          emissiveIntensity: 1.3,
+          metalness: 0.25,
+          roughness: 0.35,
+        }),
+      );
+      group.add(placeholder);
+      addHalo(group);
+
+      // Load GLB from public/
+      loader.load(
+        "/satelite2.glb",
+        (gltf) => {
+          gltf.scene.traverse((o) => {
+            if (o.isMesh) {
+              o.castShadow = true;
+              o.receiveShadow = true;
+              if (o.material?.isMeshStandardMaterial) {
+                o.material.emissive ||= new THREE.Color("#0088ff");
+                o.material.emissiveIntensity = Math.max(
+                  0.6,
+                  o.material.emissiveIntensity || 0.6,
+                );
+              }
+            }
+          });
+
+          gltfCache.sat = gltf.scene;
+
+          // Replace placeholder wtih model
+          group.remove(placeholder);
+          const inst = gltfCache.sat.clone(true);
+          inst.scale.set(3.0, 3.0, 3.0);
+          group.add(inst);
+        },
+        undefined,
+        (err) => console.error("Failed to load /satelite2.glb:", err),
+      );
+
+      return group;
+    }
+
+    world
+      .objectsData([sat])
+      .objectThreeObject(() => makeSatelliteObject())
+      // .objectLabel(
+      //   (obj) => `🛰 ${obj.name}<br/>Alt: ${obj.altitude.toFixed(2)} R`,
+      // )
+      .objectLat((obj) => obj.lat)
+      .objectLng((obj) => obj.lng)
+      .objectAltitude((obj) => obj.altitude)
+      .objectFacesSurface(true)
+      .objectRotation({ x: 10, y: 45, z: 90 })
+      .onObjectHover((o) => {
+        if (toolTipTimeoutRef.current) clearTimeout(toolTipTimeoutRef.current);
+        if (o) {
+          setHoveredArc(o);
+          setIsSatellite(true);
+          setShowToolTip(false);
+          console.log(o);
+        } else {
+          toolTipTimeoutRef.current = setTimeout(() => {
+            setIsSatellite(false);
+          }, 2000);
+        }
+      });
+    // ========================= End of Satellite ================================= //
+
+    // Spawns one traveling arc and remove it after lifetimeMs
     function createAndDestroyArc(
       globe,
       {
@@ -95,8 +219,8 @@ const AttackGlobe = () => {
         colorHead = "#ff4d6d",
         colorTail = "#ffe3ea",
         altitude = 0.5,
-        animateTime = 2000, // Travel speed
-        lifetimeMs = 3000, // keep slightly longer than animateTime
+        animateTime = 2000,
+        lifetimeMs = 3000,
         strokeWidth,
         data = "no-data",
       },
@@ -115,17 +239,15 @@ const AttackGlobe = () => {
         altitude,
         initialGap: 0.9,
         dashLength: 0.5,
-        dashGap: 1.1,
+        dashGap: 1.1, // Keep it based on initialGap otherwise you fkd
         animateTime,
         strokeWidth,
         data,
       };
 
-      // Append this arc
       const current = globe.arcsData();
       globe.arcsData([...current, arc]);
 
-      // Remove this arc after lifetimeMs
       const t = setTimeout(() => {
         try {
           const after = globe.arcsData().filter((a) => a.id !== id);
@@ -141,13 +263,11 @@ const AttackGlobe = () => {
     scene.children = scene.children.filter((c) => !(c instanceof THREE.Light));
     scene.add(new THREE.AmbientLight(0x404040, 0.4));
 
+    // Hover mesh helper, it adds invisible around the Arc for better Hover detection
     scene.traverse((child) => {
-      // Make invisible area around arc to trigger ezz hover
       if (child.isMesh && child.userData.type === "arc") {
-        // Geometry for hover detection
         const hoverGeometry = child.geometry.clone();
-        hoverGeometry.scale(5, 5, 5); // 2x larger hit area
-
+        hoverGeometry.scale(5, 5, 5);
         const hoverMesh = new THREE.Mesh(
           hoverGeometry,
           new THREE.MeshBasicMaterial({
@@ -156,7 +276,6 @@ const AttackGlobe = () => {
             side: THREE.DoubleSide,
           }),
         );
-
         hoverMesh.userData.originalArc = child;
         scene.add(hoverMesh);
       }
@@ -206,30 +325,31 @@ const AttackGlobe = () => {
     );
     scene.add(new THREE.Points(starsGeometry, starsMaterial));
 
-    // Orbit
+    // ================== Orbit (camera ONLY, satellite is static for now) ================== //
     const rotationSpeed = 0.2;
     let firstFrameDone = false;
     let rafId;
+
     const loop = () => {
+      // Camera orbit
       const { x, z } = camera.position;
       const angle = rotationSpeed * 0.01;
       camera.position.x = x * Math.cos(angle) - z * Math.sin(angle);
       camera.position.z = x * Math.sin(angle) + z * Math.cos(angle);
       camera.lookAt(0, 0, 0);
+
       rafId = requestAnimationFrame(loop);
+
       if (!firstFrameDone) {
         firstFrameDone = true;
-        setTimeout(() => {
-          setLoading(false);
-        }, 0);
+        setTimeout(() => setLoading(false), 0);
       }
     };
     loop();
+    // =============================================================================== //
 
-    // Use world here coz globeInstance is not set yet
+    // Arc spawner
     spawnArc.current = (data) => {
-      const intensity = data.intensity / 100;
-
       const { head, tail } = colorFromSeverityIntensity(
         data.severity,
         data.intensity,
@@ -244,8 +364,8 @@ const AttackGlobe = () => {
         lifetimeMs: 6000,
         colorHead: head,
         colorTail: tail,
-        strokeWidth: 0.6, // clamp01((data.intensity || 0) / 100) * 1.0,
-        altitude: Math.round(data.altitude * 100) / 100,
+        strokeWidth: 0.6,
+        altitude: Math.round((data.altitude ?? 0.5) * 100) / 100,
         data: {
           intensity: data.intensity,
           severity: data.severity,
@@ -254,11 +374,13 @@ const AttackGlobe = () => {
           targetCountry: data.targetCountry,
           sourceCountry: data.sourceCountry,
           between: `${data.sourceCountry} ---> ${data.targetCountry}`,
+          head: head,
+          tail: tail,
         },
       });
     };
 
-    globeInstance.current = world; // Will be used outside for later work
+    globeInstance.current = world;
 
     return () => {
       cancelAnimationFrame(rafId);
@@ -290,23 +412,18 @@ const AttackGlobe = () => {
   // Get data and spawn arc with loop
   useEffect(() => {
     if (!globeInstance.current) return;
-    console.log("runingngngngnng");
     const fetchData = async () => {
       try {
         const res = await fetch("http://localhost:3001/api/attacks");
         const data = await res.json();
         if (!data?.success || !Array.isArray(data.attacks)) return;
-        console.log("data", data.attacks[0].intensity);
         data.attacks.forEach((a) => spawnArc.current(a));
-      } catch (err) {
-        console.log("no data", err);
-      }
+      } catch {}
     };
 
     let timeoutId;
-
     const scheduleNext = async () => {
-      let delay = 1000 + Math.random() * 4000; // Delay for next run
+      const delay = 1000 + Math.random() * 4000;
       timeoutId = setTimeout(async () => {
         await fetchData();
         scheduleNext();
@@ -314,13 +431,12 @@ const AttackGlobe = () => {
     };
 
     scheduleNext();
-
     return () => clearTimeout(timeoutId);
   }, [loading]);
 
   return (
     <div className="relative w-full h-screen">
-      {showToolTip && (
+      {showToolTip && !isSatellite && (
         <div
           className="absolute z-30 flex flex-col p-2 rounded font-light min-w-max text-blue-50"
           style={{
@@ -330,9 +446,9 @@ const AttackGlobe = () => {
             border: `1px solid blue`,
             fontSize: `10px`,
             boxShadow: `
-              0 0 10px #00ffff,
-              0 0 10px #00ffff,
-              0 0 10px #0099ff,
+              0 0 10px ${hoveredArc.head},
+              0 0 10px ${hoveredArc.head},
+              0 0 10px ${hoveredArc.tail},
               inset 0 0 5px rgba(0, 255, 255, 0.1)
             `,
             transform: `translateX(20%)`,
@@ -344,12 +460,30 @@ const AttackGlobe = () => {
           <p>{hoveredArc.between}</p>
         </div>
       )}
-      <button
-        onClick={() => spawnArc.current()}
-        className="absolute left-5 top-5  text-white z-50 bg-amber-500"
-      >
-        hhhh
-      </button>
+      {isSatellite && (
+        <div
+          className="absolute z-30 flex flex-col p-2 rounded font-light min-w-max text-blue-50"
+          style={{
+            left: `${tooltipPosition.x}px`,
+            top: `${tooltipPosition.y}px`,
+            backgroundColor: `rgba(0, 0, 0, 0.5)`,
+            border: `1px solid #ff2dc6`,
+            fontSize: `10px`,
+            boxShadow: `
+                0 0 7px #ff2dc6,
+                0 0 10px #ff2dc6,
+                0 0 10px #ff00ff,
+                inset 0 0 5px rgba(0, 255, 255, 0.1)
+              `,
+            transform: `translateX(20%)`,
+          }}
+        >
+          <p>SE-SAT-1</p>
+          <p>Lat: {hoveredArc.lat} </p>
+          <p>Lng: {hoveredArc.lng} </p>
+          <button style={{ color: `#ff2dc6` }}> Click me For More</button>
+        </div>
+      )}
       <div ref={globeEl} className="w-full h-full" />
     </div>
   );
