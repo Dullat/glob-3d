@@ -3,16 +3,20 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "homepage": "https://dullat.github.io/glob-3d",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.3",
     "@react-three/fiber": "^9.3.0",
     "@tailwindcss/vite": "^4.1.12",
+    "gh-pages": "^6.3.0",
     "globe.gl": "^2.43.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
