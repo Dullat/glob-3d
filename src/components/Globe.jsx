@@ -10,7 +10,11 @@ const AttackGlobe = () => {
   const globeInstance = useRef(null);
   const spawnArc = useRef(null);
   const [loading, setLoading] = useState(true);
-  const canvaRef = useRef(null);
+
+  const [hoveredArc, setHoveredArc] = useState({});
+  const [showToolTip, setShowToolTip] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const toolTipTimeoutRef = useRef(null);
 
   const [countries, setCountries] = useState({ features: [] });
 
@@ -46,6 +50,17 @@ const AttackGlobe = () => {
       .arcDashInitialGap((a) => a.initialGap ?? 0)
       .arcDashAnimateTime((a) => a.animateTime ?? 1000)
       .arcsTransitionDuration(200)
+      .onArcHover((arc, prevArc) => {
+        if (toolTipTimeoutRef.current) clearTimeout(toolTipTimeoutRef.current);
+        if (arc) {
+          setShowToolTip(true);
+          console.log(arc);
+        } else {
+          toolTipTimeoutRef.current = setTimeout(() => {
+            setShowToolTip(false);
+          }, 1000);
+        }
+      })
 
       // Points
       .pointsData(generateCountryDots())
@@ -80,7 +95,7 @@ const AttackGlobe = () => {
         colorHead = "#ff4d6d",
         colorTail = "#ffe3ea",
         altitude = 0.5,
-        animateTime = 2000, // travel speed
+        animateTime = 2000, // Travel speed
         lifetimeMs = 3000, // keep slightly longer than animateTime
         strokeWidth,
       },
@@ -102,6 +117,7 @@ const AttackGlobe = () => {
         dashGap: 1.1,
         animateTime,
         strokeWidth,
+        data: "hahah",
       };
 
       // Append this arc
@@ -206,7 +222,8 @@ const AttackGlobe = () => {
         lifetimeMs: 6000,
         colorHead: head,
         colorTail: tail,
-        strokeWidth: clamp01((data.intensity || 0) / 100) * 1.0,
+        strokeWidth: 0.6, // clamp01((data.intensity || 0) / 100) * 1.0,
+        altitude: Math.round(data.altitude * 100) / 100,
       });
     };
 
@@ -220,6 +237,24 @@ const AttackGlobe = () => {
       globeInstance.current = null;
     };
   }, [countries]);
+
+  // Mouse position to globe container
+  useEffect(() => {
+    const handleMouseMove = (event) => {
+      const rect = globeEl.current.getBoundingClientRect();
+      setTooltipPosition({
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      });
+    };
+
+    if (globeEl.current) {
+      globeEl.current.addEventListener("mousemove", handleMouseMove);
+      return () => {
+        globeEl.current?.removeEventListener("mousemove", handleMouseMove);
+      };
+    }
+  }, []);
 
   // Get data and spawn arc with loop
   useEffect(() => {
@@ -254,6 +289,17 @@ const AttackGlobe = () => {
 
   return (
     <div className="relative w-full h-screen">
+      {showToolTip && (
+        <div
+          className="absolute h-6 w-20 z-30"
+          style={{
+            left: `${tooltipPosition.x}px`,
+            top: `${tooltipPosition.y}px`,
+          }}
+        >
+          hahahah
+        </div>
+      )}
       <button
         onClick={() => spawnArc.current()}
         className="absolute left-5 top-5  text-white z-50 bg-amber-500"
