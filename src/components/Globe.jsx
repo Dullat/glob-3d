@@ -53,12 +53,12 @@ const AttackGlobe = () => {
       .onArcHover((arc, prevArc) => {
         if (toolTipTimeoutRef.current) clearTimeout(toolTipTimeoutRef.current);
         if (arc) {
+          setHoveredArc(arc.data);
           setShowToolTip(true);
-          console.log(arc);
         } else {
           toolTipTimeoutRef.current = setTimeout(() => {
             setShowToolTip(false);
-          }, 1000);
+          }, 2000);
         }
       })
 
@@ -98,6 +98,7 @@ const AttackGlobe = () => {
         animateTime = 2000, // Travel speed
         lifetimeMs = 3000, // keep slightly longer than animateTime
         strokeWidth,
+        data = "no-data",
       },
     ) {
       if (!globe) return;
@@ -117,7 +118,7 @@ const AttackGlobe = () => {
         dashGap: 1.1,
         animateTime,
         strokeWidth,
-        data: "hahah",
+        data,
       };
 
       // Append this arc
@@ -139,6 +140,27 @@ const AttackGlobe = () => {
     const scene = world.scene();
     scene.children = scene.children.filter((c) => !(c instanceof THREE.Light));
     scene.add(new THREE.AmbientLight(0x404040, 0.4));
+
+    scene.traverse((child) => {
+      // Make invisible area around arc to trigger ezz hover
+      if (child.isMesh && child.userData.type === "arc") {
+        // Geometry for hover detection
+        const hoverGeometry = child.geometry.clone();
+        hoverGeometry.scale(5, 5, 5); // 2x larger hit area
+
+        const hoverMesh = new THREE.Mesh(
+          hoverGeometry,
+          new THREE.MeshBasicMaterial({
+            transparent: true,
+            opacity: 0,
+            side: THREE.DoubleSide,
+          }),
+        );
+
+        hoverMesh.userData.originalArc = child;
+        scene.add(hoverMesh);
+      }
+    });
 
     const dir = new THREE.DirectionalLight(0xffffff, 1.2);
     dir.position.set(-800, 2000, 400);
@@ -224,6 +246,15 @@ const AttackGlobe = () => {
         colorTail: tail,
         strokeWidth: 0.6, // clamp01((data.intensity || 0) / 100) * 1.0,
         altitude: Math.round(data.altitude * 100) / 100,
+        data: {
+          intensity: data.intensity,
+          severity: data.severity,
+          attackType: data.attackType,
+          target: data.target,
+          targetCountry: data.targetCountry,
+          sourceCountry: data.sourceCountry,
+          between: `${data.sourceCountry} ---> ${data.targetCountry}`,
+        },
       });
     };
 
@@ -291,13 +322,26 @@ const AttackGlobe = () => {
     <div className="relative w-full h-screen">
       {showToolTip && (
         <div
-          className="absolute h-6 w-20 z-30"
+          className="absolute z-30 flex flex-col p-2 rounded font-light min-w-max text-blue-50"
           style={{
             left: `${tooltipPosition.x}px`,
             top: `${tooltipPosition.y}px`,
+            backgroundColor: `rgba(0, 0, 0, 0.5)`,
+            border: `1px solid blue`,
+            fontSize: `10px`,
+            boxShadow: `
+              0 0 10px #00ffff,
+              0 0 10px #00ffff,
+              0 0 10px #0099ff,
+              inset 0 0 5px rgba(0, 255, 255, 0.1)
+            `,
+            transform: `translateX(20%)`,
           }}
         >
-          hahahah
+          <p>Intensity: {hoveredArc.intensity}</p>
+          <p>Sevearty : {hoveredArc.severity}</p>
+          <p>Target : {hoveredArc.target}</p>
+          <p>{hoveredArc.between}</p>
         </div>
       )}
       <button
