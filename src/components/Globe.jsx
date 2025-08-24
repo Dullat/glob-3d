@@ -19,6 +19,8 @@ const AttackGlobe = () => {
 
   const [countries, setCountries] = useState({ features: [] });
 
+  const [serverSleeping, setServerSleeping] = useState(false);
+
   // Satellite
   const [isSatellite, setIsSatellite] = useState(false);
 
@@ -35,20 +37,40 @@ const AttackGlobe = () => {
   // Random messages array
   const satelliteMessages = [
     "hmm..., earth is fucked",
-    "wohhhaa.. its all attacks?",
-    "scanning for threats...",
+    // "wohhhaa.. its all attacks?",
+    // "scanning for threats...",
     "humans never learn",
     "chaos detected below",
-    "another day, another breach",
+    // "another day, another breach",
     "sometimes i feel corny...",
-    "watching the world burn",
-    "cyber warfare intensifying",
-    "satellites see everything, even you my frnd",
-    "digital apocalypse mode: ON",
+    // "watching the world burn",
+    "the 2nd rule?... we don't talk about it",
+    "i see everything from above, even you my frnd",
+    // "digital apocalypse mode: ON",
     "earth.exe has stopped working",
-    "firewall? more like fire-fail",
     "collecting human stupidity data",
-    "malware rain detected",
+    "the deamon under ur bed : <3",
+    "Bro thinks he’s the firewall 💀",
+
+    "These attacks got more commitment than my ex",
+    "Human error: still undefeated",
+    "Skynet called — they want their beta back",
+    "Patch the planet, it's got too many bugs",
+    "When stupidity goes viral... globally",
+    "Clickbait defenses, real consequences",
+    "Built a firewall with wishes and prayers",
+    "This planet runs on lag and lies",
+    "Earth: now available in 'crash test' mode",
+    "Defenses so weak, even my grandma hacked it",
+    "AI taking notes for Judgment Day",
+    "Oops, your cyber god just blue-screened",
+    "Hacker 1 - Humanity 0",
+    "Y’all still clicking pop-up ads in 2025?",
+    "Your security team uses Internet Explorer",
+    "Who needs enemies with devs like these",
+    "If dumb was a threat vector, we’d be nuked",
+    "Earth is DDoS'd by its own users",
+    "This isn’t hacking — it's euthanasia",
   ];
 
   // ================== Satellite Static Data ================== //
@@ -268,7 +290,8 @@ const AttackGlobe = () => {
 
       // Load GLB from public/
       loader.load(
-        "/satelite2.glb",
+        import.meta.env.BASE_URL + "satelite2.glb", // for gh-pages
+        // "/satelite2.glb", for local only
         (gltf) => {
           gltf.scene.traverse((o) => {
             if (o.isMesh) {
@@ -537,7 +560,11 @@ const AttackGlobe = () => {
         const data = await res.json();
         if (!data?.success || !Array.isArray(data.attacks)) return;
         data.attacks.forEach((a) => spawnArc.current(a));
-      } catch {}
+        setServerSleeping(false);
+      } catch (err) {
+        console.log("Maybe server is sleeping... wait for 30 sec", err);
+        setServerSleeping(true);
+      }
     };
 
     let timeoutId;
@@ -656,6 +683,25 @@ const AttackGlobe = () => {
               borderTop: "6px solid #00ff41",
             }}
           />
+        </div>
+      )}
+
+      {/* Server sleeping */}
+      {serverSleeping && (
+        <div
+          className="absolute right-5 top-5 bg-[rgba(0,0,0,.3)] z-30 flex max-w-[700px] text-xs text-white p-2"
+          style={{
+            fontStyle: "italic",
+            border: "1px solid blue",
+            borderRadius: ".2rem",
+          }}
+        >
+          <p>
+            Buddy im on free plan, Maybe server is sleeping!, it will take
+            around 30 sec to wake that sucker up... <br />
+            Only then you be able to see the attaking arcs, i think satellite is
+            cool enough to make you wait for some time...
+          </p>
         </div>
       )}
 
