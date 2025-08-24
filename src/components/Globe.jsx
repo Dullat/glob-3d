@@ -2,6 +2,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import Globe from "globe.gl";
 import * as THREE from "three";
+import { colorFromSeverityIntensity } from "./setColors";
+import clamp01 from "./clamp";
 
 const AttackGlobe = () => {
   const globeEl = useRef(null);
@@ -188,27 +190,23 @@ const AttackGlobe = () => {
 
     // Use world here coz globeInstance is not set yet
     spawnArc.current = (data) => {
-      console.log(data);
-      const severityColorMap = {
-        low: "#4caf50",
-        med: "#ff9800",
-        high: "#f44336",
-      };
-      const color = severityColorMap[data.severity?.toLowerCase()] || "#9e9e9e";
-
       const intensity = data.intensity / 100;
-      const tailColor = "#1BFFFF"; //`rgba(255, 0, 0, ${intensity}`;
+
+      const { head, tail } = colorFromSeverityIntensity(
+        data.severity,
+        data.intensity,
+      );
 
       createAndDestroyArc(world, {
         startLat: data.startLat,
         startLng: data.startLng,
         endLat: data.endLat,
         endLng: data.endLng,
-        animateTime: 5000,
-        lifetimeMs: 7000,
-        colorHead: color,
-        colorTail: color,
-        strokeWidth: intensity,
+        animateTime: 4000,
+        lifetimeMs: 6000,
+        colorHead: head,
+        colorTail: tail,
+        strokeWidth: clamp01((data.intensity || 0) / 100) * 1.0,
       });
     };
 
@@ -226,18 +224,32 @@ const AttackGlobe = () => {
   // Get data and spawn arc with loop
   useEffect(() => {
     if (!globeInstance.current) return;
+    console.log("runingngngngnng");
     const fetchData = async () => {
       try {
         const res = await fetch("http://localhost:3001/api/attacks");
         const data = await res.json();
         if (!data?.success || !Array.isArray(data.attacks)) return;
-        console.log(data);
+        console.log("data", data.attacks[0].intensity);
         data.attacks.forEach((a) => spawnArc.current(a));
       } catch (err) {
         console.log("no data", err);
       }
     };
-    fetchData();
+
+    let timeoutId;
+
+    const scheduleNext = async () => {
+      let delay = 1000 + Math.random() * 4000; // Delay for next run
+      timeoutId = setTimeout(async () => {
+        await fetchData();
+        scheduleNext();
+      }, delay);
+    };
+
+    scheduleNext();
+
+    return () => clearTimeout(timeoutId);
   }, [loading]);
 
   return (
