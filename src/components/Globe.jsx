@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { colorFromSeverityIntensity } from "./setColors";
 import clamp01 from "./clamp";
+import { FaGithub } from "react-icons/fa";
 
 const AttackGlobe = () => {
   const globeEl = useRef(null);
@@ -19,7 +20,7 @@ const AttackGlobe = () => {
 
   const [countries, setCountries] = useState({ features: [] });
 
-  const [serverSleeping, setServerSleeping] = useState(false);
+  const [serverSleeping, setServerSleeping] = useState(true);
 
   // Satellite
   const [isSatellite, setIsSatellite] = useState(false);
@@ -438,7 +439,12 @@ const AttackGlobe = () => {
 
     // Camera/background
     const camera = world.camera();
-    camera.position.set(0, 0, 400);
+    const isMobile = window.innerWidth < 768;
+    if (isMobile) {
+      camera.position.set(0, 0, 600);
+    } else {
+      camera.position.set(0, 0, 400);
+    }
     camera.lookAt(0, 0, 0);
     scene.background = new THREE.Color(0x040d21);
     scene.fog = new THREE.FogExp2(0x2a1a4e, 0.0005);
@@ -526,7 +532,7 @@ const AttackGlobe = () => {
       cancelAnimationFrame(rafId);
       try {
         world._destructor && world._destructor();
-      } catch {}
+      } catch { }
       globeInstance.current = null;
     };
   }, [countries]);
@@ -580,6 +586,26 @@ const AttackGlobe = () => {
     return () => clearTimeout(timeoutId);
   }, [loading]);
 
+  useEffect(() => {
+    if (!globeInstance.current) return;
+
+    const handleResize = () => {
+      const { clientWidth, clientHeight } = globeEl.current;
+
+      const camera = globeInstance.current.camera();
+      camera.aspect = clientWidth / clientHeight;
+      camera.updateProjectionMatrix();
+
+      globeInstance.current.renderer().setSize(clientWidth, clientHeight);
+    };
+
+    window.addEventListener("resize", handleResize);
+    handleResize(); // call once at start
+
+    return () => window.removeEventListener("resize", handleResize);
+  }, [loading]);
+
+
   return (
     <div className="relative w-full h-screen">
       {showToolTip && !isSatellite && (
@@ -591,7 +617,7 @@ const AttackGlobe = () => {
             backgroundColor: `rgba(0, 0, 0, 0.5)`,
             border: `1px solid blue`,
             fontSize: `10px`,
-            color: "yellow",
+            color: "white",
             margin: "0",
             lineHeight: "1.2",
             boxShadow: `
@@ -604,7 +630,8 @@ const AttackGlobe = () => {
           }}
         >
           <p>Intensity: {hoveredArc.intensity}</p>
-          <p>Sevearty : {hoveredArc.severity}</p>
+          <p>Sevearty: {hoveredArc.severity}</p>
+          <p>Type: {hoveredArc.attackType}</p>
           <p>Target : {hoveredArc.target}</p>
           <p>{hoveredArc.between}</p>
         </div>
@@ -636,13 +663,13 @@ const AttackGlobe = () => {
 
       {showSatelliteMessage && (
         <div
-          className="absolute z-20 flex flex-col p-2 rounded font-mono text-green-400 min-w-max max-w-xs"
+          className="absolute max-w-35 z-20 flex flex-col p-2 rounded font-mono text-green-400 sm:min-w-max sm:max-w-xs text-[9px] sm:text-[12px]"
           style={{
             left: `${satelliteMessagePosition.x}px`,
             top: `${satelliteMessagePosition.y}px`,
             backgroundColor: `rgba(0, 20, 0, 0.9)`,
             border: `1px solid #00ff41`,
-            fontSize: `11px`,
+            
             boxShadow: `
               0 0 15px #00ff41,
               0 0 20px rgba(0, 255, 65, 0.4),
@@ -689,7 +716,7 @@ const AttackGlobe = () => {
       {/* Server sleeping */}
       {serverSleeping && (
         <div
-          className="absolute right-5 top-5 bg-[rgba(0,0,0,.3)] z-30 flex max-w-[700px] text-xs text-white p-2"
+          className="absolute top-[80%] sm:right-5 sm:top-5 bg-[rgba(0,0,0,.3)] z-30 flex max-w-[700px] text-xs text-white p-2 "
           style={{
             fontStyle: "italic",
             border: "1px solid blue",
@@ -697,13 +724,27 @@ const AttackGlobe = () => {
           }}
         >
           <p>
-            Buddy im on free plan, Maybe server is sleeping!, it will take
+            <span style={{color: "yellow"}}>Warning: </span>Buddy im on free plan, Maybe the server is sleeping!, it will take
             around 30 sec to wake that sucker up... <br />
             Only then you be able to see the attaking arcs, i think satellite is
             cool enough to make you wait for some time...
           </p>
         </div>
       )}
+
+      {/* copyright */}
+
+      <div className="absolute bottom-5 z-30 left-[50%] translate-x-[-50%] flex items-center gap-2 text-sm text-gray-500">
+        <span>&copy; {new Date().getFullYear()} Dullat</span>
+        <a
+          href="https://github.com/dullat"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:opacity-80 transition"
+        >
+          <FaGithub className="text-white" />
+        </a>
+      </div>
 
       <div ref={globeEl} className="w-full h-full" />
 
